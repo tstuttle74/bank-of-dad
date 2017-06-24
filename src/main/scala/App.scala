@@ -84,6 +84,8 @@ object AccountServiceImpl extends AccountService {
 
 class FileAccountRepository(file: File) extends AccountRepository {
 
+    require(file.exists())
+
     lazy val accts: Seq[Account] = loadAccounts(file)
 
     override def query(id: String): Option[Account] = {
@@ -136,5 +138,19 @@ class FileAccountRepository(file: File) extends AccountRepository {
 object App {
     def main(args: Array[String]): Unit = {
 
+        val file = new File(args(0))
+        val user = args(1)
+        val end = LocalDate.parse(args(2))
+        val start = LocalDate.parse(args(3))
+
+        val repo = new FileAccountRepository(file)
+        val acct = repo.query(user)
+        val updated = AccountServiceImpl.computeInterest(
+            start, end, acct.get)
+        for { a <- updated
+        } {
+            a.txs.foreach(println)
+            a.balances.foreach(println)
+        }
     }
 }

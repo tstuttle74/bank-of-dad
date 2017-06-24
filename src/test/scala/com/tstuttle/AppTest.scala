@@ -31,20 +31,4 @@ class AppTest {
         assert(200d == c.adjust(b).amount)
         assert(50d == de.adjust(b).amount)
     }
-
-    @Test
-    def testBasic(): Unit = {
-        val file = new File(new File("C:/Users/ted/Google Drive/teds-stuff/bank-of-dad"), "content/accounts.csv")
-        val repo = new FileAccountRepository(file)
-        val acct = repo.query("henry")
-        assertNotNull(acct)
-        assertTrue(acct.isDefined)
-        val updated = AccountServiceImpl.computeInterest(
-            LocalDate.parse("2016-07-31"), LocalDate.parse("2017-05-07"), acct.get)
-        for { a <- updated
-        } {
-            a.txs.foreach(println)
-            a.balances.foreach(println)
-        }
-    }
 }
