@@ -91,6 +91,7 @@ class FileAccountRepository(file: File) extends AccountRepository {
     }
 
     private def loadTxs(f: File): Seq[Tx] = {
+        require(f.exists())
         (for (ln <- Source.fromFile(f).getLines().drop(1)) yield {
             val tokens = ln.split(",")
             val d = LocalDate.parse(tokens(0))
@@ -104,6 +105,7 @@ class FileAccountRepository(file: File) extends AccountRepository {
     }
 
     private def loadBalances(f: File): Seq[Balance] = {
+        require(f.exists())
         (for (ln <- Source.fromFile(f).getLines().drop(1)) yield {
             val tokens = ln.split(",")
             val d = LocalDate.parse(tokens(0))
@@ -113,13 +115,14 @@ class FileAccountRepository(file: File) extends AccountRepository {
     }
 
     private def loadAccounts(f: File): Seq[Account] = {
+        require(f.exists())
         (for (ln <- Source.fromFile(f).getLines().drop(1)) yield {
             val tokens = ln.split(",")
             val id = tokens(0)
             val rate = tokens(1).toDouble
-            val txFile = new File(tokens(2))
+            val txFile = new File(f.getParentFile, tokens(2))
             val txs = loadTxs(txFile)
-            val balFile = new File(tokens(3))
+            val balFile = new File(f.getParentFile, tokens(3))
             val bals = loadBalances(balFile)
             Account(id, rate, txs, bals)
         }).toSeq

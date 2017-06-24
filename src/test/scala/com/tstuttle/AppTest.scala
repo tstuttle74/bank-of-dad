@@ -34,8 +34,8 @@ class AppTest {
 
     @Test
     def testBasic(): Unit = {
-        val path = "content/accounts.csv"
-        val repo = new FileAccountRepository(new File(path))
+        val file = new File(new File("C:/Users/ted/Google\ Drive/teds-stuff/bank-of-dad"), "content/accounts.csv")
+        val repo = new FileAccountRepository(file)
         val acct = repo.query("henry")
         assertNotNull(acct)
         assertTrue(acct.isDefined)
