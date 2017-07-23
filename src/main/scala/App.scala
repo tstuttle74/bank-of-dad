@@ -22,12 +22,29 @@ case class Debit(date: LocalDate, amount: Double, memo: String) extends Tx {
 case class Interest(date: LocalDate, amount: Double, memo: String) extends Tx {
     override def adjust(bal: Balance): Balance = Balance(date, amount + bal.amount)
 }
+case class Open(date: LocalDate, memo: String) extends Tx {
+    override def amount: Double = 0d
+    override def adjust(bal: Balance): Balance = Balance(date, bal.amount)
+}
+object Tx {
+    def apply(d: LocalDate, a: Double, m: String, typeStr: String): Tx = {
+        typeStr match {
+            case "debit" => Debit(d, a, m)
+            case "credit" => Credit(d, a, m)
+            case "open" => Open(d, m)
+        }
+    }
+}
 
-case class Account(id: String, interestRatePercent: Double, txs: Seq[Tx], balances: Seq[Balance], balanceFile: File)
+case class Account(id: String, interestRatePercent: Double, txs: Seq[Tx], txBalances: Seq[TxBalance], balanceFile: File) {
+    def balances: Seq[Balance] = txBalances.map(_.balance)
+}
 
 case class Balance(date: LocalDate, amount: Double)
 
-case class TxBalance(tx: Tx, balance: Balance)
+case class TxBalance(tx: Tx, balance: Balance) {
+    def date: LocalDate = balance.date
+}
 
 case class Statement(start: LocalDate, end: LocalDate, details: Seq[TxBalance])
 
@@ -50,35 +67,31 @@ object AccountServiceImpl extends AccountService {
 
     override def updateBalances(through: LocalDate, acct: Account): Account = {
         // find most recent month-end balance
-        val lastMonthEndBalance = acct.balances.reverse.find(b => b.date.equals(Utils.mostRecentMonthEnd(b.date))).
+        val lastTxBalance = acct.txBalances.reverse.find(b => b.date.equals(Utils.mostRecentMonthEnd(b.date))).
             getOrElse(throw new IllegalStateException(s"Expected at least one month-end balance in ${acct.balanceFile}"))
-        println(s"Latest month-end balance: $lastMonthEndBalance")
-        // get immutable history through most recent month-end
-        val balanceHistory = acct.balances.takeWhile(b => Utils.lessEqual(b.date, lastMonthEndBalance.date))
+        println(s"Latest month-end balance: $lastTxBalance")
         // compute month (start, end) tuples
-        val start = lastMonthEndBalance.date.plusDays(1)
+        val start = lastTxBalance.date.plusDays(1)
         val end = Utils.mostRecentMonthEnd(through)
         Utils.validateRange(start, end)
         val months = Stream.from(0).map(idx => (start.plusMonths(idx), Utils.monthEnd(start.plusMonths(idx)))).
             takeWhile{case(_, e) => Utils.lessEqual(e, through)}
-        // compute month-end balances w/ interest
-        var startingBal = lastMonthEndBalance
-        val balances = (for ((mStart, mEnd) <- months) yield {
-            val monthBalances = computeInterest(mStart, mEnd, startingBal, acct)
-            startingBal = monthBalances.last.balance
-            monthBalances
-        }).flatten
+        // build full list of balances
+        // drop head of update, it is dup of last element of bal
+        val newBalances = months.scanLeft(Seq(lastTxBalance)){ case(txBals, mTup) =>
+            computeInterest(mTup._1, mTup._2, txBals.last, acct)
+        }.flatten.tail
 
-        balances.foreach(println)
+        // get immutable history through most recent month-end
+        val balanceHistory = acct.txBalances.takeWhile(b => Utils.lessEqual(b.date, lastTxBalance.date))
+        // compute current partial period txbal
+        val currentBalances = currentTxs(acct, newBalances.last)
 
-//        // assume if we have a balances it includes all tx for that date
-//        val txs = acct.txs.filter(tx => tx.date.isAfter(latestBalance.date) && Utils.lessEqual(tx.date, through)).
-//            sortWith{case(tx1, tx2) => tx1.date.compareTo(tx2.date) < 0}
-//        val balances = txs.scanLeft(latestBalance){ case(currBal, curTx) =>
-//            curTx.adjust(currBal)
-//        }
+        val allBalances = balanceHistory ++ newBalances ++ currentBalances
 
-        acct
+        //allBalances.foreach(println)
+
+        acct.copy(txBalances = allBalances)
     }
 
     override def statement(start: LocalDate, end: LocalDate, acct: Account): Statement = {
@@ -87,13 +100,13 @@ object AccountServiceImpl extends AccountService {
 
     private def computeInterest(start: LocalDate,
                                 end: LocalDate,
-                                latestBalance: Balance,
+                                latestBalance: TxBalance,
                                 acct: Account): Seq[TxBalance] = {
         Utils.validateRange(start, end)
         // tx for month
         val txs = acct.txs.filter(tx => between(tx.date, start, end)).
                 sortWith{case(tx1, tx2) => tx1.date.compareTo(tx2.date) < 0}
-        val txBalances = txs.scanLeft(TxBalance(null, latestBalance)){ case(currTxBal, curTx) =>
+        val txBalances = txs.scanLeft(latestBalance){ case(currTxBal, curTx) =>
             TxBalance(curTx, curTx.adjust(currTxBal.balance))
         }
         val balances = txBalances.map(_.balance)
@@ -112,7 +125,15 @@ object AccountServiceImpl extends AccountService {
             avgDailyBal*acct.interestRatePercent/100d*(numDays/365d),
             s"rate=${acct.interestRatePercent}% avgDailyBal=$avgDailyBal days=$numDays")
         val lastBal = byDay.last._2
-        txBalances :+ TxBalance(intTx, intTx.adjust(lastBal))
+        txBalances.tail :+ TxBalance(intTx, intTx.adjust(lastBal))
+    }
+
+    private def currentTxs(acct: Account, lastBal: TxBalance): Seq[TxBalance] = {
+        val txs = acct.txs.filter(tx => tx.date.isAfter(lastBal.date)).
+                sortWith{case(tx1, tx2) => tx1.date.compareTo(tx2.date) < 0}
+        txs.scanLeft(lastBal){ case(currTxBal, curTx) =>
+            TxBalance(curTx, curTx.adjust(currTxBal.balance))
+        }.tail
     }
 }
 
@@ -133,20 +154,25 @@ class FileAccountRepository(file: File) extends AccountRepository {
             val d = LocalDate.parse(tokens(0))
             val a = tokens(2).toDouble
             val memo = tokens.lift(3).getOrElse("")
-            tokens(1) match {
-                case "debit" => Debit(d, a, memo)
-                case "credit" => Credit(d, a, memo)
-            }
+            Tx(d, a, memo, tokens(1))
         }).toSeq
     }
 
-    private def loadBalances(f: File): Seq[Balance] = {
+    private def loadBalances(f: File): Seq[TxBalance] = {
         require(f.exists())
         (for (ln <- Source.fromFile(f).getLines().drop(1)) yield {
             val tokens = ln.split(",")
+            // [0] date
+            // [1] txtype
+            // [2] txamount
+            // [3] txmemo
+            // [4] balance
             val d = LocalDate.parse(tokens(0))
-            val a = tokens(1).toDouble
-            Balance(d, a)
+            val balAmt = tokens(4).toDouble
+            val txAmt = tokens(2).toDouble
+            val tx = Tx(d, txAmt, tokens(3), tokens(1))
+            val b = Balance(d, balAmt)
+            TxBalance(tx, b)
         }).toSeq
     }
 
