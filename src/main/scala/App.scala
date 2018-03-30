@@ -81,7 +81,7 @@ object AccountServiceImpl extends AccountService {
         p(s"Statement Period: ${stmt.start} to ${stmt.end}")
         p(f"Total Interest  : $$$totalInterest%2.2f")
         p(f"Opening Balance : $$${stmt.details.head.balance.amount}%2.2f")
-        p("Transaction History")
+        p("\nTransaction History")
         p("%10s %10s %10s %35s %10s".format("date", "tx", "amount", "memo", "balance"))
         def txBalStr(tb: TxBalance) = f"${tb.date}%10s ${Tx.typeStr(tb.tx)}%10s ${tb.tx.amount}%10.2f ${tb.tx.memo}%35s ${tb.balance.amount}%10.2f"
         for (txBal <- stmt.details.tail) {
@@ -278,8 +278,10 @@ object App {
 
         // side-effects
         repo.store(newAcct)
-        val writer = new StringWriter()
+        val outFile = new File(file.getParentFile, s"stmt.$end.txt")
+        println(s"Writing current statement to $outFile")
+        val writer = new FileWriter(outFile)
         AccountServiceImpl.print(stmt, writer)
-        println(writer.toString)
+        writer.close()
     }
 }
