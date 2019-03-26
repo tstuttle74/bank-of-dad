@@ -24,6 +24,15 @@ class AppTest {
     }
 
     @Test
+    def testMoreDateUtil(): Unit = {
+        val s = parse("2016-12-31")
+        val e = parse("2017-01-01")
+        Utils.validateRange(s, e)
+        val result = Try(Utils.validateRange(e, s))
+        assert(result.isFailure)
+    }
+
+    @Test
     def testTx(): Unit = {
         val d = parse("2016-12-31")
         val c = Credit(d, 100d, "m1")
