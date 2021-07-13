@@ -1,12 +1,8 @@
 package com.tstuttle
 
-import java.io.File
-import java.time.LocalDate
-import java.time.LocalDate.parse
-
 import org.junit.Test
-import org.junit.Assert._
 
+import java.time.LocalDate.parse
 import scala.util.Try
 
 /**

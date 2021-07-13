@@ -1,11 +1,11 @@
 package com.tstuttle
 
+import com.tstuttle.Utils.{between, lessEqual}
+import org.apache.commons.io.FileUtils
+
 import java.io._
 import java.time.LocalDate
-
 import scala.io.Source
-import Utils.{between, lessEqual}
-import org.apache.commons.io.FileUtils
 
 sealed trait Tx {
     def date: LocalDate
