@@ -209,7 +209,7 @@ class FileAccountRepository(file: File) extends AccountRepository {
     }
 
     private def writeBalances(balances: Seq[TxBalance], f: File): Unit = {
-        val bk = new File(f.getParentFile, s"${f.getName}.bak")
+        val bk = new File(f.getParentFile, s"${f.getName}.${LocalDate.now().toString}.bak")
         println(s"Backing up $f to $bk")
         FileUtils.copyFile(f, bk)
         println(s"Writing $f")
@@ -274,7 +274,7 @@ object App {
         val repo = new FileAccountRepository(file)
         val acct = repo.query(user).getOrElse(throw new IllegalArgumentException(s"Failed to locate account for $user"))
         val newAcct = AccountServiceImpl.updateBalances(end, acct)
-        val stmt = AccountServiceImpl.statement(mode,  end, newAcct)
+        val stmt = AccountServiceImpl.statement(mode, end, newAcct)
 
         // side-effects
         repo.store(newAcct)
